@@ -51,11 +51,10 @@ export default function Profile() {
   };
 
   function changePasswordSubmit(id, newPassword, confirmNewPassword) {
-    const requestBody = {
-      id,
-      newPassword,
-      confirmNewPassword,
-    };
+  const requestBody = {
+    newPassword,
+    confirmNewPassword,
+  };
     setMessage(null);
     httpService
       .post('/change-password', requestBody)
