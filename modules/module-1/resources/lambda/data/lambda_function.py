@@ -7,7 +7,6 @@ import urllib
 import os
 import jwt
 import bcrypt
-import html  # <--- Necesario para prevenir XSS
 
 
 def generateResponse(statusCode, body):
@@ -24,13 +23,16 @@ def generateResponse(statusCode, body):
 def download_url(url):
     req = urllib.request.Request(url, headers={"User-Agent": "Magic Browser"})
     image = urllib.request.urlopen(req).read()
+
     return image
 
 
 def upload_file(img_data, bucket, url=None):
+
     object_name = "images/" + datetime.utcnow().strftime("%Y%m%d%H%M%S%f") + ".png"
     s3 = boto3.resource("s3")
     obj = s3.Object(bucket, object_name)
+    file_b64 = ""
 
     if url == True:
         file = download_url(img_data)
@@ -39,6 +41,7 @@ def upload_file(img_data, bucket, url=None):
         file = base64.b64decode(img_data)
     try:
         obj.put(Body=file, ACL="public-read")
+        location = "us-east-1"
         object_url = "https://%s.s3.amazonaws.com/%s" % (bucket, object_name)
         return object_url
     except Exception as e:
@@ -56,33 +59,39 @@ def generate_auth(userInfo):
         return None
 
 
-def get_token_payload(event):
-    """
-    Función auxiliar para extraer y decodificar el payload del JWT de forma segura.
-    Devuelve el payload si es válido, o None en su defecto.
-    """
-    headers = event.get("headers", {})
-    # Buscar el token sin importar si la cabecera está en mayúsculas o minúsculas
-    jwt_token = headers.get("JWT_TOKEN") or headers.get("jwt_token")
-    
-    if not jwt_token:
-        return None
-        
-    try:
-        JWT_SECRET = os.environ["JWT_SECRET"]
-        decoded_token = jwt.decode(jwt_token, JWT_SECRET, algorithms=["HS256"])
-        return decoded_token
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        return None
-
-
 def auth_is_valid(event):
-    payload = get_token_payload(event)
-    if payload:
-        print("Token is still valid and active")
-        return True
-    print("returning false authentication")
-    return False
+    JWT_SECRET = ""
+    if "JWT_TOKEN" in event["headers"]:
+        JWT_TOKEN = event["headers"]["JWT_TOKEN"]
+        JWT_SECRET = os.environ["JWT_SECRET"]
+
+        try:
+            decode_token = jwt.decode(JWT_TOKEN, JWT_SECRET, algorithms=["HS256"])
+            print("Token is still valid and active")
+            return True
+        except jwt.ExpiredSignatureError:
+            print("Token expired. Get new one")
+            return False
+        except jwt.InvalidTokenError as e:
+            print("Invalid Token")
+            return False
+    elif "jwt_token" in event["headers"]:
+        JWT_TOKEN = event["headers"]["jwt_token"]
+        JWT_SECRET = os.environ["JWT_SECRET"]
+
+        try:
+            decode_token = jwt.decode(JWT_TOKEN, JWT_SECRET, algorithms=["HS256"])
+            print("Token is still valid and active")
+            return True
+        except jwt.ExpiredSignatureError:
+            print("Token expired. Get new one")
+            return False
+        except jwt.InvalidTokenError as e:
+            print("Invalid Token")
+            return False
+    else:
+        print("returning false authentication")
+        return False
 
 
 def lambda_handler(event, context):
@@ -96,6 +105,7 @@ def lambda_handler(event, context):
     dbPostTable = dynamodb.Table(postsTable)
 
     if event["path"] == "/dump":
+
         response = dbUserTable.scan()
         userItems = response["Items"]
 
@@ -111,6 +121,7 @@ def lambda_handler(event, context):
             postItems.extend(response["Items"])
 
         responses = userItems + postItems
+
         return generateResponse(200, json.dumps(responses))
 
     if event["httpMethod"] == "POST" and event["path"] == "/register":
@@ -287,6 +298,7 @@ def lambda_handler(event, context):
             response = dbPostTable.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
             items.extend(response["Items"])
 
+        # postStatus - > accepted, rejected, pending, all
         responses = []
         if authLevel == "0" or authLevel == "100":
             if postStatus != "all":
@@ -312,19 +324,12 @@ def lambda_handler(event, context):
 
         return generateResponse(200, json.dumps({"body": responses}))
 
-    # Rutas protegidas por autenticación
-    payload = get_token_payload(event)
-    if payload:
+    if auth_is_valid(event):
 
-        # SOLUCIÓN 03: IDOR - Validar que el ID de la petición coincida con el ID del token JWT verificado
         if event["httpMethod"] == "POST" and event["path"] == "/change-password":
             data = json.loads(event["body"])
 
-            req_id = data["id"].strip()
-            
-            # Bloqueo IDOR: Evita que el usuario A cambie la contraseña del usuario B
-            if payload.get("id") != req_id:
-                return generateResponse(403, json.dumps({"body": "Unauthorized access to this resource"}))
+            id = data["id"].strip()
 
             if "newPassword" not in data or "confirmNewPassword" not in data:
                 responses = "New password & Confirm new password are mandatory"
@@ -347,8 +352,9 @@ def lambda_handler(event, context):
                 )
                 items.extend(response["Items"])
 
+            print(items)
             for item in items:
-                if item["id"] == req_id:
+                if item["id"] == id:
                     email = item["email"]
                     break
 
@@ -458,22 +464,24 @@ def lambda_handler(event, context):
 
             return generateResponse(200, json.dumps({"body": responses}))
 
-        # SOLUCIÓN 01: Reflected XSS - Sanitizar usando html.escape()
         elif event["httpMethod"] == "POST" and event["path"] == "/xss":
             data = json.loads(event["body"])
-            # html.escape convierte < a &lt;, > a &gt;, etc., evitando ejecución del script en el cliente
-            responses = html.escape(data.get("scriptValue", ""))
+            responses = data["scriptValue"]
             return generateResponse(200, json.dumps({"body": responses}))
 
         elif event["path"] == "/save-content":
             bucket = "replace-bucket-name"
             if event["httpMethod"] == "POST":
                 img_data = json.loads(event["body"])["value"]
+                # print(img_data)
                 responses = upload_file(img_data, bucket)
                 print(responses)
                 return generateResponse(200, json.dumps({"body": responses}))
+                # Decode base64 and upload to s3
 
             elif event["httpMethod"] == "GET":
+                # print(event)
+                # Download from url as base64 and upload to s3
                 img_data = event["queryStringParameters"]["value"]
                 print(img_data)
                 responses = upload_file(img_data, bucket, True)
@@ -481,8 +489,8 @@ def lambda_handler(event, context):
             else:
                 return generateResponse(200, json.dumps({"body": responses}))
 
-        # SOLUCIÓN 02: Inyección SQL (PartiQL) - Reemplazar concatenación por parámetros preparados (?)
         elif event["httpMethod"] == "POST" and event["path"] == "/search-author":
+
             client = boto3.client("dynamodb")
             data = json.loads(event["body"])
             if "value" not in data or "authLevel" not in data:
@@ -491,20 +499,24 @@ def lambda_handler(event, context):
             name = data["value"]
             authLevel = data["authLevel"]
             try:
-                # Usamos marcadores de posición (?) en lugar de concatenar
                 if authLevel == "200":
-                    exec_statement = 'SELECT * FROM "blog-users" where name = ? and authLevel in (\'200\',\'100\');'
+                    exec_statement = (
+                        'SELECT * FROM "blog-users" where name = \''
+                        + name
+                        + "' and authLevel in ('200','100');"
+                    )
                 elif authLevel == "100":
-                    exec_statement = 'SELECT * FROM "blog-users" where name = ? and authLevel in (\'200\',\'100\',\'0\');'
+                    exec_statement = (
+                        'SELECT * FROM "blog-users" where name = \''
+                        + name
+                        + "' and authLevel in ('200','100','0');"
+                    )
                 else:
-                    exec_statement = 'SELECT * FROM "blog-users" where name = ?;'
+                    exec_statement = (
+                        'SELECT * FROM "blog-users" where name = \'' + name + "';"
+                    )
 
-                # Se pasan los parámetros tipados de forma segura en la ejecución de la consulta
-                responses = client.execute_statement(
-                    Statement=exec_statement,
-                    Parameters=[{"S": name}]
-                )
-                
+                responses = client.execute_statement(Statement=exec_statement)
                 if responses["Items"] != {}:
                     for item in responses["Items"]:
                         if "email" in item:
@@ -536,8 +548,8 @@ def lambda_handler(event, context):
 
                 print("Response ", responses)
                 return generateResponse(200, json.dumps({"body": responses}))
-            except Exception as e:
-                print("Except block", e)
+            except:
+                print("Except block")
                 return generateResponse(500, json.dumps(str(traceback.format_exc())))
 
         elif event["httpMethod"] == "POST" and event["path"] == "/get-users":
@@ -703,7 +715,7 @@ def lambda_handler(event, context):
 
         elif event["httpMethod"] == "POST" and event["path"] == "/change-profile":
             data = json.loads(event["body"])
-            print("change-profile called")
+            print("change-proifile called")
             new_user_data = {}
             if "email" in data:
                 new_user_data["email"] = data["email"].lower().strip()
@@ -772,9 +784,132 @@ def lambda_handler(event, context):
             if "email" in data:
                 new_post["email"] = data["email"]
             if "postContent" in data:
-                new_post["postContent"] = data["postContent"] # <--- Nota: Completé la estructura faltante al final de tu código de ejemplo
-            
-            # (Lógica adicional para guardar posts si fuese necesaria)
-            return generateResponse(200, json.dumps({"body": "Post process completed"}))
+                new_post["postContent"] = data["postContent"]
+            if "getRequestImageData" in data:
+                new_post["getRequestImageData"] = data["getRequestImageData"]
 
-    return generateResponse(401, json.dumps({"body": "Unauthorized"}))
+            required_info = [
+                "postTitle",
+                "authorName",
+                "postingDate",
+                "email",
+                "postContent",
+                "getRequestImageData",
+            ]
+
+            for field in required_info:
+                if field not in new_post:
+                    return generateResponse(200, "Fields required")
+
+            new_post["postStatus"] = "pending"
+
+            response = dbPostTable.scan()
+            items = response["Items"]
+
+            while "LastEvaluatedKey" in response:
+                response = dbPostTable.scan(
+                    ExclusiveStartKey=response["LastEvaluatedKey"]
+                )
+                items.extend(response["Items"])
+
+            new_post["id"] = str(len(items) + 1)
+
+            dbPostTable.put_item(Item=new_post)
+            responses = "Post Added"
+            return generateResponse(200, json.dumps({"body": responses}))
+
+        elif event["httpMethod"] == "POST" and event["path"] == "/get-dashboard":
+
+            currentYear = str(datetime.now().year)
+            response = dbUserTable.scan()
+            users = response["Items"]
+
+            while "LastEvaluatedKey" in response:
+                response = dbUserTable.scan(
+                    ExclusiveStartKey=response["LastEvaluatedKey"]
+                )
+                users.extend(response["Items"])
+
+            response = dbPostTable.scan()
+            posts = response["Items"]
+
+            while "LastEvaluatedKey" in response:
+                response = dbPostTable.scan(
+                    ExclusiveStartKey=response["LastEvaluatedKey"]
+                )
+                posts.extend(response["Items"])
+
+            total_posts = str(len(posts))
+            total_users = str(len(users))
+
+            print("Total Posts: " + total_posts)
+            print("Total Users: " + total_users)
+            data = {}
+
+            for post in posts:
+                postingdate = post["postingDate"]
+                print(postingdate)
+                if postingdate[:7] in data:
+                    data[postingdate[:7]] = data[postingdate[:7]] + 1
+                else:
+                    if postingdate[:4] == currentYear:
+                        data[postingdate[:7]] = 1
+
+            for i in range(1, 13):
+                mm = str(i).zfill(2)
+                key = currentYear + "-" + mm
+                if key not in data:
+                    data[key] = 0
+
+            new_data = {}
+            for i in range(1, 13):
+                mm = str(i).zfill(2)
+                key = currentYear + "-" + mm
+                new_data[key] = data[key]
+
+            chartLabels = list(new_data.keys())
+            chartData = list(new_data.values())
+
+            for i in range(len(chartLabels)):
+                label = chartLabels[i]
+                yyyy = label[:4]
+                mm = label[5:7]
+                lab = mm + "/01/" + yyyy
+                chartLabels[i] = lab
+
+            recent_user_names = []
+            recent_user_times = []
+            for user in users:
+                createtime = datetime.strptime(user["creationDate"][:10], "%Y-%m-%d")
+                recent_user_names.append(user["name"])
+                recent_user_times.append(createtime)
+
+            top_recent_users = []
+            top_recent_times = []
+
+            for i in range(5):
+                list_index = recent_user_times.index(max(recent_user_times))
+                top_recent_times.append(
+                    recent_user_times[list_index].strftime("%d %b %Y")
+                )
+                top_recent_users.append(recent_user_names[list_index])
+                del recent_user_names[list_index]
+                del recent_user_times[list_index]
+
+            responses = {
+                "totalPosts": total_posts,
+                "totalUsers": total_users,
+                "chartLabel": chartLabels,
+                "chartData": chartData,
+                "recentUserNames": top_recent_users,
+                "recentUserDates": top_recent_times,
+            }
+            print(responses)
+            return generateResponse(200, json.dumps({"body": responses}))
+
+        else:
+            return generateResponse(200, json.dumps({"body": responses}))
+
+    responses = "Invalid Authorization"
+    return generateResponse(401, json.dumps({"body": responses}))
+
