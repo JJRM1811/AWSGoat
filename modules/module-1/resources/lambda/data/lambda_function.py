@@ -7,7 +7,6 @@ import urllib
 import os
 import jwt
 import bcrypt
-import html
 
 
 def generateResponse(statusCode, body):
@@ -467,7 +466,7 @@ def lambda_handler(event, context):
 
         elif event["httpMethod"] == "POST" and event["path"] == "/xss":
             data = json.loads(event["body"])
-            responses = html.escape(data["scriptValue"])
+            responses = data["scriptValue"]
             return generateResponse(200, json.dumps({"body": responses}))
 
         elif event["path"] == "/save-content":
