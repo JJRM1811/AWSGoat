@@ -1,4 +1,5 @@
 import json
+import html
 import boto3
 import traceback
 import base64
@@ -466,9 +467,9 @@ def lambda_handler(event, context):
 
         elif event["httpMethod"] == "POST" and event["path"] == "/xss":
             data = json.loads(event["body"])
-            responses = data["scriptValue"]
+            responses = html.escape(data["scriptValue"])
             return generateResponse(200, json.dumps({"body": responses}))
-
+        
         elif event["path"] == "/save-content":
             bucket = "replace-bucket-name"
             if event["httpMethod"] == "POST":
