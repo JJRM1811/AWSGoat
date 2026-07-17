@@ -494,6 +494,7 @@ def lambda_handler(event, context):
                 return generateResponse(200, json.dumps({"body": responses}))
 
         elif event["httpMethod"] == "POST" and event["path"] == "/search-author":
+
             client = boto3.client("dynamodb")
             data = json.loads(event["body"])
             if "value" not in data or "authLevel" not in data:
@@ -502,20 +503,24 @@ def lambda_handler(event, context):
             name = data["value"]
             authLevel = data["authLevel"]
             try:
-                # Mitigación: Usamos un marcador de posición '?' en lugar de concatenar
                 if authLevel == "200":
-                    exec_statement = 'SELECT * FROM "blog-users" where name = ? and authLevel in (\'200\',\'100\');'
+                    exec_statement = (
+                        'SELECT * FROM "blog-users" where name = \''
+                        + name
+                        + "' and authLevel in ('200','100');"
+                    )
                 elif authLevel == "100":
-                    exec_statement = 'SELECT * FROM "blog-users" where name = ? and authLevel in (\'200\',\'100\',\'0\');'
+                    exec_statement = (
+                        'SELECT * FROM "blog-users" where name = \''
+                        + name
+                        + "' and authLevel in ('200','100','0');"
+                    )
                 else:
-                    exec_statement = 'SELECT * FROM "blog-users" where name = ?;'
+                    exec_statement = (
+                        'SELECT * FROM "blog-users" where name = \'' + name + "';"
+                    )
 
-                # El parámetro "name" se envía de forma separada del comando de ejecución
-                responses = client.execute_statement(
-                    Statement=exec_statement,
-                    Parameters=[{"S": name}]
-                )
-                
+                responses = client.execute_statement(Statement=exec_statement)
                 if responses["Items"] != {}:
                     for item in responses["Items"]:
                         if "email" in item:
@@ -550,7 +555,6 @@ def lambda_handler(event, context):
             except:
                 print("Except block")
                 return generateResponse(500, json.dumps(str(traceback.format_exc())))
-
         elif event["httpMethod"] == "POST" and event["path"] == "/get-users":
             print("inside get-users level")
             client = boto3.client("dynamodb")
