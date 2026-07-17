@@ -4,7 +4,10 @@ include 'config.inc';
 
 session_start();
 
-error_reporting(0);
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', '/var/log/php_errors.log');
 
 if (isset($_GET['organization'])) {
 	$stmt = $conn->prepare("SELECT organization_id FROM organizations WHERE organization=?");
@@ -22,7 +25,9 @@ if (isset($_POST['submit'])) {
 	if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
  	die("Correo electrónico inválido.");
 	}
-	$password = md5($_POST['password']);
+	if (password_verify($_POST['password'], $row['password'])) {
+		// Login correcto
+	}
 	
 	$stmt = $conn->prepare("SELECT * FROM users WHERE email=? AND password=?LIMIT 1");
 	$stmt->bind_param("ss", $email, $password);
@@ -86,7 +91,7 @@ if (isset($_POST['submit'])) {
 				<input type="email" placeholder="Email" name="email" value="<?php echo $email; ?>" required>
 			</div>
 			<div class="input-group">
-				<input type="password" placeholder="Password" name="password" value="<?php echo $_POST['password']; ?>" required>
+				<input type="password" placeholder="Password" name="password" required>
 			</div>
 			<div class="input-group">
 				<button name="submit" class="btn">Login</button>
