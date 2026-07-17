@@ -7,7 +7,10 @@ session_start();
 error_reporting(0);
 
 if (isset($_GET['organization'])) {
-	$oidres = mysqli_query($conn,"SELECT organization_id from organizations where organization = '{$_GET['organization']}'");
+	$stmt = mysqli_prepare($conn, "SELECT organization_id FROM organizations WHERE organization = ?");
+    mysqli_stmt_bind_param($stmt, "s", $_GET['organization']);
+    mysqli_stmt_execute($stmt);
+    $oidres = mysqli_stmt_get_result($stmt);
 	$oidq = mysqli_fetch_assoc($oidres);
 	$oid = $oidq['organization_id'];
 	$_SESSION['organization_id'] = $oid; 
@@ -18,8 +21,10 @@ if (isset($_POST['submit'])) {
 	$email = $_POST['email'];
 	$password = md5($_POST['password']);
 
-	$sql = "SELECT * FROM users WHERE email='$email' AND password='$password' LIMIT 1";
-	$result = mysqli_query($conn, $sql);
+    $stmt = mysqli_prepare($conn, "SELECT * FROM users WHERE email = ? AND password = ? LIMIT 1");
+    mysqli_stmt_bind_param($stmt, "ss", $email, $password);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
 	if ($result->num_rows > 0) {
 		$row = mysqli_fetch_assoc($result);
 		$_SESSION['username'] = $row['username'];
