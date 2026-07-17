@@ -15,11 +15,14 @@ if (isset($_GET['organization'])) {
 }
 
 if (isset($_POST['submit'])) {
-	$email = $_POST['email'];
+	$email = trim($_POST['email']);
 	$password = md5($_POST['password']);
-
-	$sql = "SELECT * FROM users WHERE email='$email' AND password='$password' LIMIT 1";
-	$result = mysqli_query($conn, $sql);
+	
+	$stmt = $conn->prepare("SELECT * FROM users WHERE email=? AND password=?LIMIT 1");
+	$stmt->bind_param("ss", $email, $password);
+	$stmt->execute();
+	$result = $stmt->get_result();
+	
 	if ($result->num_rows > 0) {
 		$row = mysqli_fetch_assoc($result);
 		$_SESSION['username'] = $row['username'];
