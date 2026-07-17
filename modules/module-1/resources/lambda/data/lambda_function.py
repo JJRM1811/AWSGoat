@@ -494,7 +494,6 @@ def lambda_handler(event, context):
                 return generateResponse(200, json.dumps({"body": responses}))
 
         elif event["httpMethod"] == "POST" and event["path"] == "/search-author":
-
             client = boto3.client("dynamodb")
             data = json.loads(event["body"])
             if "value" not in data or "authLevel" not in data:
@@ -503,24 +502,20 @@ def lambda_handler(event, context):
             name = data["value"]
             authLevel = data["authLevel"]
             try:
+                # Mitigación: Usamos un marcador de posición '?' en lugar de concatenar
                 if authLevel == "200":
-                    exec_statement = (
-                        'SELECT * FROM "blog-users" where name = \''
-                        + name
-                        + "' and authLevel in ('200','100');"
-                    )
+                    exec_statement = 'SELECT * FROM "blog-users" where name = ? and authLevel in (\'200\',\'100\');'
                 elif authLevel == "100":
-                    exec_statement = (
-                        'SELECT * FROM "blog-users" where name = \''
-                        + name
-                        + "' and authLevel in ('200','100','0');"
-                    )
+                    exec_statement = 'SELECT * FROM "blog-users" where name = ? and authLevel in (\'200\',\'100\',\'0\');'
                 else:
-                    exec_statement = (
-                        'SELECT * FROM "blog-users" where name = \'' + name + "';"
-                    )
+                    exec_statement = 'SELECT * FROM "blog-users" where name = ?;'
 
-                responses = client.execute_statement(Statement=exec_statement)
+                # El parámetro "name" se envía de forma separada del comando de ejecución
+                responses = client.execute_statement(
+                    Statement=exec_statement,
+                    Parameters=[{"S": name}]
+                )
+                
                 if responses["Items"] != {}:
                     for item in responses["Items"]:
                         if "email" in item:
