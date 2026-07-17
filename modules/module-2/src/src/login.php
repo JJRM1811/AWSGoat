@@ -7,7 +7,10 @@ session_start();
 error_reporting(0);
 
 if (isset($_GET['organization'])) {
-	$oidres = mysqli_query($conn,"SELECT organization_id from organizations where organization = '{$_GET['organization']}'");
+	$stmt = $conn->prepare("SELECT organization_id FROM organizations WHERE organization=?");
+	$stmt->bind_param("s", $_GET['organization']);
+	$stmt->execute();
+	$oidres = $stmt->get_result();
 	$oidq = mysqli_fetch_assoc($oidres);
 	$oid = $oidq['organization_id'];
 	$_SESSION['organization_id'] = $oid; 
@@ -16,6 +19,9 @@ if (isset($_GET['organization'])) {
 
 if (isset($_POST['submit'])) {
 	$email = trim($_POST['email']);
+	if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+ 	die("Correo electrónico inválido.");
+	}
 	$password = md5($_POST['password']);
 	
 	$stmt = $conn->prepare("SELECT * FROM users WHERE email=? AND password=?LIMIT 1");
