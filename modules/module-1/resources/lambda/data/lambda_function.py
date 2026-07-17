@@ -334,13 +334,7 @@ def lambda_handler(event, context):
         if event["httpMethod"] == "POST" and event["path"] == "/change-password":
             data = json.loads(event["body"])
 
-            # 1. NO leas "id" de data. Extrae el email del payload verificado del JWT
-            # (El payload ya fue decodificado y validado previamente en la Lambda)
-            user_email_from_token = payload.get("email")
-
-            if not user_email_from_token:
-                return generateResponse(401, json.dumps({"body": "Unauthorized: Invalid session token"}))
-
+            id = data["id"].strip()
             if "newPassword" not in data or "confirmNewPassword" not in data:
                 responses = "New password & Confirm new password are mandatory"
                 return generateResponse(200, json.dumps({"body": responses}))
@@ -352,25 +346,9 @@ def lambda_handler(event, context):
                 responses = "New password & Confirm new password must match"
                 return generateResponse(200, json.dumps({"body": responses}))
 
-            # 2. Encriptamos la nueva contraseña directamente
-            encryptedPW = bcrypt.hashpw(
-                newPassword.encode("utf-8"), bcrypt.gensalt(rounds=10)
-            ).decode("utf-8")
-
-            # 3. Realizamos la actualización en DynamoDB usando ÚNICAMENTE el email extraído de forma segura del Token JWT
-            dbUserTable.update_item(
-                Key={
-                    "email": user_email_from_token
-                },
-                UpdateExpression="set password = :r",
-                ExpressionAttributeValues={
-                    ":r": encryptedPW,
-                },
-                ReturnValues="UPDATED_NEW",
-            )
-
-            responses = "Password changed successfully"
-            return generateResponse(200, json.dumps({"body": responses}))
+            email = ""
+            response = dbUserTable.scan()
+            items = response["Items"]
 
             while "LastEvaluatedKey" in response:
                 response = dbUserTable.scan(
