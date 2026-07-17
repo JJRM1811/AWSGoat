@@ -4,16 +4,10 @@ include 'config.inc';
 
 session_start();
 
-error_reporting(E_ALL);
-ini_set('display_errors', 0);
-ini_set('log_errors', 1);
-ini_set('error_log', '/var/log/php_errors.log');
+error_reporting(0);
 
 if (isset($_GET['organization'])) {
-	$stmt = $conn->prepare("SELECT organization_id FROM organizations WHERE organization=?");
-	$stmt->bind_param("s", $_GET['organization']);
-	$stmt->execute();
-	$oidres = $stmt->get_result();
+	$oidres = mysqli_query($conn,"SELECT organization_id from organizations where organization = '{$_GET['organization']}'");
 	$oidq = mysqli_fetch_assoc($oidres);
 	$oid = $oidq['organization_id'];
 	$_SESSION['organization_id'] = $oid; 
@@ -21,19 +15,11 @@ if (isset($_GET['organization'])) {
 }
 
 if (isset($_POST['submit'])) {
-	$email = trim($_POST['email']);
-	if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
- 	die("Correo electrónico inválido.");
-	}
-	if (password_verify($_POST['password'], $row['password'])) {
-		// Login correcto
-	}
-	
-	$stmt = $conn->prepare("SELECT * FROM users WHERE email=? AND password=?LIMIT 1");
-	$stmt->bind_param("ss", $email, $password);
-	$stmt->execute();
-	$result = $stmt->get_result();
-	
+	$email = $_POST['email'];
+	$password = md5($_POST['password']);
+
+	$sql = "SELECT * FROM users WHERE email='$email' AND password='$password' LIMIT 1";
+	$result = mysqli_query($conn, $sql);
 	if ($result->num_rows > 0) {
 		$row = mysqli_fetch_assoc($result);
 		$_SESSION['username'] = $row['username'];
@@ -91,7 +77,7 @@ if (isset($_POST['submit'])) {
 				<input type="email" placeholder="Email" name="email" value="<?php echo $email; ?>" required>
 			</div>
 			<div class="input-group">
-				<input type="password" placeholder="Password" name="password" required>
+				<input type="password" placeholder="Password" name="password" value="<?php echo $_POST['password']; ?>" required>
 			</div>
 			<div class="input-group">
 				<button name="submit" class="btn">Login</button>
