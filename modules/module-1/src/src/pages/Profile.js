@@ -50,7 +50,7 @@ export default function Profile() {
     setSuccess(false);
   };
 
-  function changePasswordSubmit(id, newPassword, confirmNewPassword) {
+   function changePasswordSubmit(id, newPassword, confirmNewPassword) {
     const requestBody = {
       newPassword,
       confirmNewPassword,
