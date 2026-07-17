@@ -52,6 +52,7 @@ export default function Profile() {
 
    function changePasswordSubmit(id, newPassword, confirmNewPassword) {
     const requestBody = {
+      id,
       newPassword,
       confirmNewPassword,
   };
